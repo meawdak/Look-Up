@@ -1,0 +1,156 @@
+{
+  "_note": "Hand-written beginner targets. Star ids are Hipparcos (HIP) numbers that match stars.json. Facts like distance and brightness are NOT stored here: the app reads them from stars.json so they always come from the catalogue. Planets and the Moon are positioned live by astronomy-engine.",
+  "targets": [
+    {
+      "id": "polaris",
+      "title": "The Pole Star",
+      "kind": "star",
+      "stars": [11767],
+      "level": 1,
+      "puzzle": "Find a medium-bright star in the north that sits on its own. It is the one star that hardly moves all night.",
+      "hints": [
+        "Face north.",
+        "Its height above the horizon is about the same as your latitude in degrees.",
+        "It is not the brightest star in the sky, just the steadiest."
+      ],
+      "unlock_fact": "Every other star in the northern sky seems to circle around this one during the night."
+    },
+    {
+      "id": "summer-triangle",
+      "title": "The Summer Triangle",
+      "kind": "asterism",
+      "stars": [91262, 102098, 97649],
+      "level": 1,
+      "puzzle": "Find three bright stars that form a big triangle.",
+      "hints": [
+        "Start with the brightest of the three. It is bluish-white.",
+        "The triangle is large: roughly two outstretched hands across.",
+        "One corner star is far fainter-looking than its true power, because it is very far away."
+      ],
+      "unlock_fact": "The three corners belong to three different constellations: Lyra, Cygnus and Aquila."
+    },
+    {
+      "id": "cassiopeia",
+      "title": "Cassiopeia",
+      "kind": "constellation",
+      "constellation": "Cas",
+      "stars": [746, 3179, 4427, 6686, 8886],
+      "level": 2,
+      "puzzle": "Find five stars making a big letter W (or M, depending on the time).",
+      "hints": [
+        "Look toward the north.",
+        "It sits on the opposite side of the Pole Star from the Big Dipper.",
+        "The five stars are similar in brightness, none very bright."
+      ],
+      "unlock_fact": "The W flips into an M as the night goes on, because the sky turns around the Pole Star."
+    },
+    {
+      "id": "big-dipper",
+      "title": "The Big Dipper",
+      "kind": "asterism",
+      "stars": [54061, 53910, 58001, 59774, 62956, 65378, 67301],
+      "level": 2,
+      "puzzle": "Find seven stars shaped like a ladle or a saucepan with a curved handle.",
+      "hints": [
+        "Look toward the north. From India it can sit low or below the horizon at some times of year.",
+        "Four stars make the bowl, three make the handle.",
+        "The two stars at the outer edge of the bowl point toward the Pole Star."
+      ],
+      "unlock_fact": "These seven stars are only part of a larger constellation, Ursa Major, the Great Bear."
+    },
+    {
+      "id": "pegasus-square",
+      "title": "The Great Square of Pegasus",
+      "kind": "asterism",
+      "stars": [113963, 113881, 1067, 677],
+      "level": 2,
+      "puzzle": "Find four fairly bright stars forming a large, almost perfect square.",
+      "hints": [
+        "The square is big, so look for it with your whole field of view, not one small patch.",
+        "The inside of the square looks nearly empty in a city.",
+        "Try counting how many stars you can see inside it. That tells you how dark your sky is."
+      ],
+      "unlock_fact": "One corner star actually belongs to the neighbouring constellation Andromeda."
+    },
+    {
+      "id": "pleiades",
+      "title": "The Pleiades",
+      "kind": "cluster",
+      "stars": [17702],
+      "level": 3,
+      "puzzle": "Find a small, tight, fuzzy group of stars that looks like a tiny dipper.",
+      "hints": [
+        "It is much smaller than the Big Dipper. Your thumb held at arm's length almost covers it.",
+        "Looking slightly to the side of it often shows more stars than looking straight at it.",
+        "Count the stars you can see. Most people see five to seven."
+      ],
+      "unlock_fact": "These stars were born together and are moving through space as one family."
+    },
+    {
+      "id": "orion-belt",
+      "title": "Orion's Belt",
+      "kind": "asterism",
+      "constellation": "Ori",
+      "stars": [26727, 26311, 25930],
+      "level": 1,
+      "puzzle": "Find three bright stars in a short, nearly straight line, evenly spaced.",
+      "hints": [
+        "They are close together: the whole line is less than two fingers wide at arm's length.",
+        "A reddish bright star sits above them and a bluish one below.",
+        "In October they rise late at night. Check the app's 'best time' first."
+      ],
+      "unlock_fact": "The three belt stars look side by side, but they are at very different distances from us."
+    },
+    {
+      "id": "sirius",
+      "title": "Sirius",
+      "kind": "star",
+      "stars": [32349],
+      "level": 2,
+      "requires": "orion-belt",
+      "puzzle": "Follow the line of Orion's Belt downward until you hit the brightest star in the night sky.",
+      "hints": [
+        "Extend the belt line to the lower left (in the northern hemisphere).",
+        "Near the horizon it often twinkles in different colours."
+      ],
+      "unlock_fact": "It looks the brightest partly because it is one of the nearest stars to us."
+    },
+    {
+      "id": "antares",
+      "title": "Antares",
+      "kind": "star",
+      "constellation": "Sco",
+      "stars": [80763],
+      "level": 2,
+      "puzzle": "Find a bright reddish-orange star low in the sky, in the middle of a curving line of stars.",
+      "hints": [
+        "Its colour is the giveaway: clearly orange-red next to white stars.",
+        "It is the heart of Scorpius, the scorpion."
+      ],
+      "unlock_fact": "Its name roughly means 'rival of Mars', because of its red colour."
+    },
+    {
+      "id": "planet-of-tonight",
+      "title": "Tonight's planet",
+      "kind": "planet",
+      "body": "auto",
+      "level": 1,
+      "puzzle": "Find a bright 'star' that does not twinkle much.",
+      "hints": [
+        "Planets usually shine with a steadier light than stars.",
+        "They always lie near the same band across the sky that the Sun and Moon follow."
+      ],
+      "unlock_fact": "Unlike stars, planets shift their position against the background stars from week to week."
+    },
+    {
+      "id": "moon",
+      "title": "The Moon",
+      "kind": "moon",
+      "body": "Moon",
+      "level": 0,
+      "puzzle": "Find the Moon and note its shape.",
+      "hints": ["The app tells you its phase and whether it is up right now."],
+      "unlock_fact": "A bright Moon washes out faint stars, so moonless nights are best for hard challenges."
+    }
+  ]
+}

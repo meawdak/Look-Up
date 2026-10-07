@@ -1,0 +1,22 @@
+{
+  "name": "look-up",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Offline night-sky field guide that gets you outside and teaches you to need the phone less.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "check-data": "node tools/check_data.mjs"
+  },
+  "dependencies": {
+    "@wllama/wllama": "^3.8.1",
+    "astronomy-engine": "^2.1.19"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "vite": "^8.3.3",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}
