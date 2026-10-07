@@ -1,7 +1,7 @@
 import './styles.css';
 import { makeObserver, compassWord, heightWord } from './sky/engine.js';
 import { loadData, planTonight, positionFn } from './sky/targets.js';
-import { buildFacts, templateHint } from './ai/guide.js';
+import { buildFacts, buildFactsFor, templateHint, quickAnswer, checkAnswer } from './ai/guide.js';
 import { loadProgress, markFound, isFound, isLocked } from './game/progress.js';
 import {
   start as startPointing,
@@ -9,6 +9,13 @@ import {
   onPointing,
   angularDistance,
 } from './sensors/pointing.js';
+import {
+  isDownloaded,
+  download as downloadModel,
+  load as loadModel,
+  ask as askModel,
+  isInferenceRunning,
+} from './ai/model.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -185,6 +192,7 @@ function renderQuest(plan) {
       <div id="hints-list" aria-live="polite"></div>
       <button id="btn-hint" class="btn-action" type="button">Give me a hint</button>
       <button id="btn-point" class="btn-action" type="button">Point & check</button>
+      <button id="btn-ask" class="btn-action" type="button">Ask the guide</button>
       <button id="btn-found" class="btn-action btn-primary" type="button">I found it!</button>
     </article>
     <footer class="muted">Phone down. Look up.</footer>`;
@@ -224,6 +232,10 @@ function renderQuest(plan) {
     renderPointAndCheck(plan);
   };
 
+  $('btn-ask').onclick = () => {
+    renderAskGuide(plan);
+  };
+
   $('btn-found').onclick = () => {
     markFound(plan.target.id, appData.targets);
     renderFound(plan);
@@ -246,6 +258,8 @@ function renderPointAndCheck(plan) {
   let sensorTimeout = null;
   let autoReturnTimeout = null;
   let hasVibrated = false;
+  let isOnTarget = false;
+  let isFrozen = false;
 
   function cleanup() {
     stopPointing();
@@ -293,6 +307,7 @@ function renderPointAndCheck(plan) {
 
       <div id="pointing-display" style="display: none;">
         <div id="pointing-status" class="pointing-status">● COLDER</div>
+        <div id="pointing-distance" class="muted" style="font-size: 0.95rem; margin: 4px 0 10px;"></div>
         <div id="arrow-az" class="arrow-big">← Turn left</div>
         <div id="arrow-alt" class="arrow-small">↑ Tilt up</div>
         <div id="pointing-message" class="on-target-msg" style="display: none;"></div>
@@ -330,6 +345,8 @@ function renderPointAndCheck(plan) {
   }, 3000);
 
   unsubscribePointing = onPointing((reading) => {
+    if (isFrozen) return;
+
     if (sensorTimeout) {
       clearTimeout(sensorTimeout);
       sensorTimeout = null;
@@ -346,13 +363,8 @@ function renderPointAndCheck(plan) {
     const currentAz = reading.az;
     const d = angularDistance(currentAlt, currentAz, targetPos.alt, targetPos.az);
 
-    let diffAz = (targetPos.az - currentAz) % 360;
-    if (diffAz > 180) diffAz -= 360;
-    if (diffAz < -180) diffAz += 360;
-
-    const diffAlt = targetPos.alt - currentAlt;
-
     const statusEl = $('pointing-status');
+    const distEl = $('pointing-distance');
     const arrowAzEl = $('arrow-az');
     const arrowAltEl = $('arrow-alt');
     const messageEl = $('pointing-message');
@@ -369,25 +381,23 @@ function renderPointAndCheck(plan) {
       }
     }
 
-    if (Math.abs(diffAz) <= 5) {
-      arrowAzEl.textContent = '● Ahead';
-    } else if (diffAz > 0) {
-      arrowAzEl.textContent = '→ Turn right';
-    } else {
-      arrowAzEl.textContent = '← Turn left';
+    // Hysteresis: enter below 10°, only leave above 15°
+    if (!isOnTarget && d < 10) {
+      isOnTarget = true;
+    } else if (isOnTarget && d > 15) {
+      isOnTarget = false;
     }
 
-    if (Math.abs(diffAlt) <= 5) {
-      arrowAltEl.textContent = '● Level';
-    } else if (diffAlt > 0) {
-      arrowAltEl.textContent = '↑ Tilt up';
-    } else {
-      arrowAltEl.textContent = '↓ Tilt down';
-    }
+    // 1. When on target: freeze screen, hide arrows & distance, show message & vibrate once
+    if (isOnTarget) {
+      isFrozen = true;
 
-    if (d < 10) {
       statusEl.className = 'pointing-status on-target';
       statusEl.textContent = '★ ON TARGET';
+
+      arrowAzEl.style.display = 'none';
+      arrowAltEl.style.display = 'none';
+      if (distEl) distEl.style.display = 'none';
 
       if (messageEl) {
         messageEl.style.display = 'block';
@@ -408,24 +418,348 @@ function renderPointAndCheck(plan) {
           renderQuest(plan);
         }, 5000);
       }
+      return;
+    }
+
+    // When NOT on target:
+    if (messageEl) {
+      messageEl.style.display = 'none';
+    }
+
+    // Show distance text (shrinking as user gets closer)
+    if (distEl) {
+      distEl.style.display = 'block';
+      distEl.textContent = `${Math.round(d)}° away`;
+    }
+
+    statusEl.className = 'pointing-status';
+    if (d < 30) {
+      statusEl.textContent = '● WARMER';
     } else {
-      statusEl.className = 'pointing-status';
-      if (d < 30) {
-        statusEl.textContent = '● WARMER';
+      statusEl.textContent = '● COLDER';
+    }
+
+    // Azimuth arrow: hide when difference is under 5°
+    let diffAz = (targetPos.az - currentAz) % 360;
+    if (diffAz > 180) diffAz -= 360;
+    if (diffAz < -180) diffAz += 360;
+
+    if (Math.abs(diffAz) <= 5) {
+      arrowAzEl.style.display = 'none';
+    } else {
+      arrowAzEl.style.display = 'block';
+      if (diffAz > 0) {
+        arrowAzEl.textContent = '→ Turn right';
       } else {
-        statusEl.textContent = '● COLDER';
-      }
-
-      if (messageEl) {
-        messageEl.style.display = 'none';
-      }
-
-      if (autoReturnTimeout) {
-        clearTimeout(autoReturnTimeout);
-        autoReturnTimeout = null;
+        arrowAzEl.textContent = '← Turn left';
       }
     }
+
+    // Altitude arrow: "Height is right" when difference is under 5°
+    const diffAlt = targetPos.alt - currentAlt;
+    arrowAltEl.style.display = 'block';
+    if (Math.abs(diffAlt) <= 5) {
+      arrowAltEl.textContent = 'Height is right';
+    } else if (diffAlt > 0) {
+      arrowAltEl.textContent = '↑ Tilt up';
+    } else {
+      arrowAltEl.textContent = '↓ Tilt down';
+    }
   });
+}
+
+// S4: Ask the Guide Screen
+async function renderAskGuide(plan) {
+  clearActiveCountdown();
+  clearActivePointing();
+
+  const facts = buildFacts(plan, appData);
+  const name = plan.body ? `${plan.target.title}: ${plan.body}` : plan.target.title;
+  const app = $('app');
+
+  let downloaded = await isDownloaded();
+  if (downloaded) {
+    loadModel().catch((e) => console.warn('Background model load failed:', e));
+  }
+
+  const defaultAnswer = templateHint(facts, 0);
+
+  app.innerHTML = `
+    <nav class="nav-bar">
+      <button id="btn-back-ask" class="btn-back" type="button" aria-label="Back to Quest">← Quest</button>
+    </nav>
+    <article class="card">
+      <h2>Ask about ${name}</h2>
+
+      <div class="chips-container" role="group" aria-label="Quick questions">
+        <button class="chip" type="button" data-q="What am I looking at?">What am I looking at?</button>
+        <button class="chip" type="button" data-q="How far away is it?">How far away is it?</button>
+        <button class="chip" type="button" data-q="How do I find it?">How do I find it?</button>
+      </div>
+
+      <form id="ask-form" class="ask-form">
+        <input id="ask-input" type="text" placeholder="type a question…" autocomplete="off" />
+        <button id="btn-ask-submit" type="submit" class="btn-primary">Ask</button>
+      </form>
+
+      <div id="guide-response" class="guide-box" aria-live="polite">
+        <p class="guide-answer">Guide: "${defaultAnswer}"</p>
+        <p class="guide-meta">${downloaded ? '' : 'Template answer (download guide for custom answers)'}</p>
+      </div>
+
+      <div id="download-section">
+        ${
+          !downloaded
+            ? `
+          <button id="btn-download-guide" class="btn-action" type="button">
+            Download guide for offline use (~490 MB, use Wi-Fi)
+          </button>
+          <div id="dl-progress-wrapper" style="display: none; margin: 12px 0;">
+            <progress id="dl-progress-bar" value="0" max="100"></progress>
+            <div id="dl-progress-text" class="guide-meta" style="margin-top: 6px;">Downloading: 0%</div>
+          </div>
+        `
+            : ''
+        }
+      </div>
+    </article>
+    <footer class="muted">Answers use only the app's sky data.</footer>`;
+
+  let currentRequestId = 0;
+  let aiTimerInterval = null;
+  let activeAbortController = null;
+
+  function stopAiTimer() {
+    if (aiTimerInterval) {
+      clearInterval(aiTimerInterval);
+      aiTimerInterval = null;
+    }
+  }
+
+  $('btn-back-ask').onclick = () => {
+    stopAiTimer();
+    currentRequestId++;
+    if (activeAbortController) {
+      try { activeAbortController.abort(); } catch {}
+      activeAbortController = null;
+    }
+    renderQuest(plan);
+  };
+
+  const downloadBtn = $('btn-download-guide');
+  if (downloadBtn) {
+    downloadBtn.onclick = async () => {
+      downloadBtn.disabled = true;
+      const wrapper = $('dl-progress-wrapper');
+      const progressBar = $('dl-progress-bar');
+      const progressText = $('dl-progress-text');
+      if (wrapper) wrapper.style.display = 'block';
+
+      try {
+        await downloadModel(({ loaded, total, percent }) => {
+          if (progressBar) progressBar.value = percent;
+          const loadedMB = (loaded / (1024 * 1024)).toFixed(0);
+          const totalMB = total > 0 ? (total / (1024 * 1024)).toFixed(0) : '490';
+          if (progressText) {
+            progressText.textContent = `Downloading: ${Math.round(percent)}% (${loadedMB} MB / ${totalMB} MB)`;
+          }
+        });
+        downloaded = true;
+        if (wrapper) {
+          wrapper.innerHTML = '<p class="guide-meta" style="color: var(--text);">Guide downloaded and ready for offline use!</p>';
+        }
+        downloadBtn.style.display = 'none';
+      } catch (err) {
+        console.error('Download failed:', err);
+        if (wrapper) {
+          wrapper.innerHTML = `<p class="guide-meta">Download failed: ${err.message || 'network error'}. Try again on Wi-Fi.</p>`;
+        }
+        downloadBtn.disabled = false;
+      }
+    };
+  }
+
+  function setBusy(busy) {
+    app.querySelectorAll('.chip').forEach((chip) => {
+      chip.disabled = busy;
+      chip.classList.toggle('is-busy', busy);
+    });
+    const input = $('ask-input');
+    if (input) input.disabled = busy;
+    const submitBtn = $('btn-ask-submit');
+    if (submitBtn) {
+      submitBtn.disabled = busy;
+      submitBtn.classList.toggle('is-busy', busy);
+    }
+  }
+
+  async function handleQuestion(q) {
+    const question = q.trim();
+    if (!question) return;
+
+    const responseEl = $('guide-response');
+    if (!responseEl) return;
+
+    // Build question-specific facts without raw magnitude numbers or hints array
+    const qFacts = buildFactsFor(plan, appData, question);
+
+    // 1. Immediately display the quick answer
+    const immediateAnswer = quickAnswer(qFacts, question);
+    responseEl.innerHTML = `
+      <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Quick answer</p>
+      <p id="guide-display-text" class="guide-answer">Guide: "${immediateAnswer}"</p>
+      <div id="ai-status-container"></div>
+    `;
+
+    if (!downloaded) {
+      const statusContainer = $('ai-status-container');
+      if (statusContainer) {
+        statusContainer.innerHTML = `<p class="guide-meta" style="margin-top: 8px;">Template answer. Download guide for custom AI answers.</p>`;
+      }
+      return;
+    }
+
+    // Check if inference is still running from previous question
+    const wasFinishingOld = isInferenceRunning();
+
+    // Abort previous background inference if running
+    if (activeAbortController) {
+      try { activeAbortController.abort(); } catch {}
+    }
+    activeAbortController = new AbortController();
+    const abortSignal = activeAbortController.signal;
+
+    // 2. Start model in background; show status line with counting timer & "Skip AI" button
+    stopAiTimer();
+    const reqId = ++currentRequestId;
+    setBusy(true);
+
+    let elapsedSeconds = 0;
+    const statusContainer = $('ai-status-container');
+    const statusMessage = wasFinishingOld
+      ? 'Guide is still finishing the previous question…'
+      : 'Guide is thinking… (can take a minute on slow devices)';
+
+    if (statusContainer) {
+      statusContainer.innerHTML = `
+        <div class="ai-status-row">
+          <span class="ai-status-text">${statusMessage} · <span id="ai-timer">0</span>s</span>
+          <button id="btn-skip-ai" class="btn-skip" type="button">Skip AI</button>
+        </div>
+      `;
+    }
+
+    aiTimerInterval = setInterval(() => {
+      elapsedSeconds++;
+      const timerSpan = $('ai-timer');
+      if (timerSpan) {
+        timerSpan.textContent = elapsedSeconds;
+      }
+    }, 1000);
+
+    const skipBtn = $('btn-skip-ai');
+    if (skipBtn) {
+      skipBtn.onclick = () => {
+        stopAiTimer();
+        currentRequestId++; // Cancel wait and ignore any late result
+        if (activeAbortController) {
+          try { activeAbortController.abort(); } catch {}
+          activeAbortController = null;
+        }
+        const sc = $('ai-status-container');
+        if (sc) sc.innerHTML = '';
+        setBusy(false);
+      };
+    }
+
+    const onToken = (streamedText) => {
+      if (reqId !== currentRequestId) return;
+      const answerTextEl = $('guide-display-text');
+      if (answerTextEl) {
+        if (streamedText.includes('NOT_IN_FACTS')) {
+          answerTextEl.textContent = `Guide: "That's not in my sky data. I can tell you where it is, how far away it is, or how to find it."`;
+        } else {
+          answerTextEl.textContent = `Guide: "${streamedText}"`;
+        }
+      }
+    };
+
+    try {
+      const { answer, seconds, loadSeconds, promptTokens } = await askModel(
+        qFacts,
+        question,
+        null,
+        abortSignal,
+        onToken
+      );
+
+      // If user skipped or asked another question while running, ignore late result
+      if (reqId !== currentRequestId) {
+        return;
+      }
+
+      stopAiTimer();
+      const sc = $('ai-status-container');
+      if (sc) sc.innerHTML = '';
+      setBusy(false);
+
+      const NOT_IN_FACTS_MESSAGE =
+        "That's not in my sky data. I can tell you where it is, how far away it is, or how to find it.";
+      const finalAnswer = answer.includes('NOT_IN_FACTS') ? NOT_IN_FACTS_MESSAGE : answer;
+
+      // 4. If AI answer arrives and passes checkAnswer(), replace the quick answer
+      if (checkAnswer(answer, qFacts)) {
+        const timingLine = loadSeconds
+          ? `Model load: ${loadSeconds} s · Prompt: ${promptTokens} tokens · Answer: ${seconds} s`
+          : `Prompt: ${promptTokens} tokens · Answer: ${seconds} s`;
+
+        responseEl.innerHTML = `
+          <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Guide answer (checked against sky data)</p>
+          <p class="guide-answer">Guide: "${finalAnswer}"</p>
+          <p class="guide-meta">${timingLine}</p>
+        `;
+      } else {
+        responseEl.innerHTML = `
+          <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Quick answer</p>
+          <p class="guide-answer">Guide: "${immediateAnswer}"</p>
+          <p class="guide-meta">AI answer did not match sky data. Kept quick answer.</p>
+        `;
+      }
+    } catch (err) {
+      if (reqId !== currentRequestId) {
+        return;
+      }
+      stopAiTimer();
+      const sc = $('ai-status-container');
+      if (sc) sc.innerHTML = '';
+      setBusy(false);
+      console.warn('AI guide error, keeping quick answer:', err);
+      responseEl.innerHTML = `
+        <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Quick answer</p>
+        <p class="guide-answer">Guide: "${immediateAnswer}"</p>
+        <p class="guide-meta">Guide unavailable: ${err.message || 'error'}. Kept quick answer.</p>
+      `;
+    }
+  }
+
+  app.querySelectorAll('.chip').forEach((chip) => {
+    chip.onclick = () => {
+      const q = chip.getAttribute('data-q');
+      handleQuestion(q);
+    };
+  });
+
+  const form = $('ask-form');
+  if (form) {
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const input = $('ask-input');
+      if (input && input.value) {
+        handleQuestion(input.value);
+        input.value = '';
+      }
+    };
+  }
 }
 
 // S5: Found Screen

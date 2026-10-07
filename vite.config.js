@@ -5,6 +5,18 @@ import { VitePWA } from 'vite-plugin-pwa';
 // base: './' lets the built app work from any folder (e.g. GitHub Pages /look-up/)
 export default defineConfig({
   base: './',
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
   plugins: [
     // HTTPS on the dev server: phones only allow GPS + compass on https pages
     basicSsl(),
