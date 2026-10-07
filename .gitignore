@@ -3,3 +3,4 @@ dist/
 dev-dist/
 *.gguf
 .DS_Store
+docs/
