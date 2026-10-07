@@ -195,3 +195,48 @@ footer {
   margin-top: 24px;
   text-align: center;
 }
+
+/* S3 Point & check */
+.pointing-card {
+  text-align: center;
+  padding: 20px 14px;
+}
+
+.pointing-status {
+  font-size: 1.5rem;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  margin: 16px 0 12px;
+}
+
+.pointing-status.on-target {
+  color: var(--text);
+  border: 1px solid var(--text);
+  border-radius: 10px;
+  padding: 6px 12px;
+  display: inline-block;
+}
+
+.arrow-big {
+  font-size: 1.9rem;
+  font-weight: bold;
+  margin: 16px 0 8px;
+}
+
+.arrow-small {
+  font-size: 1.25rem;
+  color: var(--text);
+  margin: 4px 0 16px;
+}
+
+.on-target-msg {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 14px 0 8px;
+}
+
+.calibration-tip {
+  font-size: 0.88rem;
+  margin-top: 18px;
+}
+

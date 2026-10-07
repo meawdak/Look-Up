@@ -1,8 +1,14 @@
 import './styles.css';
 import { makeObserver, compassWord, heightWord } from './sky/engine.js';
-import { loadData, planTonight } from './sky/targets.js';
+import { loadData, planTonight, positionFn } from './sky/targets.js';
 import { buildFacts, templateHint } from './ai/guide.js';
 import { loadProgress, markFound, isFound, isLocked } from './game/progress.js';
+import {
+  start as startPointing,
+  stop as stopPointing,
+  onPointing,
+  angularDistance,
+} from './sensors/pointing.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -18,12 +24,20 @@ let appData = null;
 let currentLoc = null;
 let currentPlans = [];
 let activeCountdown = null;
+let activePointingCleanup = null;
 
 // Clean up any ongoing timer when leaving views
 function clearActiveCountdown() {
   if (activeCountdown) {
     clearInterval(activeCountdown);
     activeCountdown = null;
+  }
+}
+
+function clearActivePointing() {
+  if (activePointingCleanup) {
+    activePointingCleanup();
+    activePointingCleanup = null;
   }
 }
 
@@ -71,6 +85,7 @@ function askLocation() {
 // S1: Tonight Screen
 function renderTonight() {
   clearActiveCountdown();
+  clearActivePointing();
   const progress = loadProgress();
   const app = $('app');
 
@@ -143,6 +158,7 @@ function renderTonight() {
 // S2: Quest Screen
 function renderQuest(plan) {
   clearActiveCountdown();
+  clearActivePointing();
   const progress = loadProgress();
   const facts = buildFacts(plan, appData);
   const name = plan.body ? `${plan.target.title}: ${plan.body}` : plan.target.title;
@@ -168,6 +184,7 @@ function renderQuest(plan) {
       <p class="unlock-fact">"${facts.puzzle}"</p>
       <div id="hints-list" aria-live="polite"></div>
       <button id="btn-hint" class="btn-action" type="button">Give me a hint</button>
+      <button id="btn-point" class="btn-action" type="button">Point & check</button>
       <button id="btn-found" class="btn-action btn-primary" type="button">I found it!</button>
     </article>
     <footer class="muted">Phone down. Look up.</footer>`;
@@ -198,10 +215,217 @@ function renderQuest(plan) {
     hintBtn.textContent = 'No hints available';
   }
 
+  $('btn-point').onclick = async () => {
+    try {
+      await startPointing();
+    } catch (err) {
+      console.warn('Sensors could not be started:', err);
+    }
+    renderPointAndCheck(plan);
+  };
+
   $('btn-found').onclick = () => {
     markFound(plan.target.id, appData.targets);
     renderFound(plan);
   };
+}
+
+// S3: Point & Check Screen
+function renderPointAndCheck(plan) {
+  clearActiveCountdown();
+  if (activePointingCleanup) {
+    activePointingCleanup();
+    activePointingCleanup = null;
+  }
+
+  const name = plan.body ? `${plan.target.title}: ${plan.body}` : plan.target.title;
+  const app = $('app');
+
+  let unsubscribePointing = null;
+  let targetUpdateInterval = null;
+  let sensorTimeout = null;
+  let autoReturnTimeout = null;
+  let hasVibrated = false;
+
+  function cleanup() {
+    stopPointing();
+    if (unsubscribePointing) {
+      unsubscribePointing();
+      unsubscribePointing = null;
+    }
+    if (targetUpdateInterval) {
+      clearInterval(targetUpdateInterval);
+      targetUpdateInterval = null;
+    }
+    if (sensorTimeout) {
+      clearTimeout(sensorTimeout);
+      sensorTimeout = null;
+    }
+    if (autoReturnTimeout) {
+      clearTimeout(autoReturnTimeout);
+      autoReturnTimeout = null;
+    }
+  }
+  activePointingCleanup = cleanup;
+
+  const posFn = currentLoc
+    ? positionFn(plan.target, appData, makeObserver(currentLoc.lat, currentLoc.lon), new Date())
+    : null;
+  let targetPos = posFn ? posFn(new Date()) : plan.now;
+
+  targetUpdateInterval = setInterval(() => {
+    if (posFn) {
+      targetPos = posFn(new Date());
+    }
+  }, 3000);
+
+  app.innerHTML = `
+    <nav class="nav-bar">
+      <button id="btn-back-pointing" class="btn-back" type="button" aria-label="Back to Quest">← Quest</button>
+    </nav>
+    <article class="card pointing-card">
+      <h2>${name}</h2>
+      <p class="muted">Hold the phone up toward the sky.</p>
+
+      <div id="sensor-loading" class="muted" style="margin: 24px 0;">
+        Looking for compass sensors…
+      </div>
+
+      <div id="pointing-display" style="display: none;">
+        <div id="pointing-status" class="pointing-status">● COLDER</div>
+        <div id="arrow-az" class="arrow-big">← Turn left</div>
+        <div id="arrow-alt" class="arrow-small">↑ Tilt up</div>
+        <div id="pointing-message" class="on-target-msg" style="display: none;"></div>
+        <div id="sensor-warning" class="muted" style="display: none; font-size: 0.85rem; margin-top: 8px;"></div>
+      </div>
+
+      <p class="muted calibration-tip">Tip: Wave the phone in a figure 8 to calibrate the compass.</p>
+
+      <button id="btn-done-pointing" class="btn-action btn-primary" type="button" style="margin-top: 20px;">
+        Done — I'll look myself
+      </button>
+    </article>
+    <footer class="muted">Phone down. Look up.</footer>`;
+
+  $('btn-back-pointing').onclick = () => {
+    cleanup();
+    activePointingCleanup = null;
+    renderQuest(plan);
+  };
+
+  $('btn-done-pointing').onclick = () => {
+    cleanup();
+    activePointingCleanup = null;
+    renderQuest(plan);
+  };
+
+  sensorTimeout = setTimeout(() => {
+    const loadingEl = $('sensor-loading');
+    if (loadingEl) {
+      loadingEl.innerHTML = `
+        <p>No compass detected on this device.</p>
+        <p class="muted">Laptops do not have orientation sensors. You can still find it by eye!</p>
+      `;
+    }
+  }, 3000);
+
+  unsubscribePointing = onPointing((reading) => {
+    if (sensorTimeout) {
+      clearTimeout(sensorTimeout);
+      sensorTimeout = null;
+    }
+
+    const loadingEl = $('sensor-loading');
+    const displayEl = $('pointing-display');
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (displayEl) displayEl.style.display = 'block';
+
+    if (!targetPos) return;
+
+    const currentAlt = reading.alt;
+    const currentAz = reading.az;
+    const d = angularDistance(currentAlt, currentAz, targetPos.alt, targetPos.az);
+
+    let diffAz = (targetPos.az - currentAz) % 360;
+    if (diffAz > 180) diffAz -= 360;
+    if (diffAz < -180) diffAz += 360;
+
+    const diffAlt = targetPos.alt - currentAlt;
+
+    const statusEl = $('pointing-status');
+    const arrowAzEl = $('arrow-az');
+    const arrowAltEl = $('arrow-alt');
+    const messageEl = $('pointing-message');
+    const warningEl = $('sensor-warning');
+
+    if (!statusEl || !arrowAzEl || !arrowAltEl) return;
+
+    if (warningEl) {
+      if (reading.inaccurate) {
+        warningEl.style.display = 'block';
+        warningEl.textContent = 'Compass may be inaccurate.';
+      } else {
+        warningEl.style.display = 'none';
+      }
+    }
+
+    if (Math.abs(diffAz) <= 5) {
+      arrowAzEl.textContent = '● Ahead';
+    } else if (diffAz > 0) {
+      arrowAzEl.textContent = '→ Turn right';
+    } else {
+      arrowAzEl.textContent = '← Turn left';
+    }
+
+    if (Math.abs(diffAlt) <= 5) {
+      arrowAltEl.textContent = '● Level';
+    } else if (diffAlt > 0) {
+      arrowAltEl.textContent = '↑ Tilt up';
+    } else {
+      arrowAltEl.textContent = '↓ Tilt down';
+    }
+
+    if (d < 10) {
+      statusEl.className = 'pointing-status on-target';
+      statusEl.textContent = '★ ON TARGET';
+
+      if (messageEl) {
+        messageEl.style.display = 'block';
+        messageEl.textContent = 'Now lower the phone and find it with your eyes.';
+      }
+
+      if (!hasVibrated) {
+        hasVibrated = true;
+        try {
+          if ('vibrate' in navigator) navigator.vibrate(200);
+        } catch {}
+      }
+
+      if (!autoReturnTimeout) {
+        autoReturnTimeout = setTimeout(() => {
+          cleanup();
+          activePointingCleanup = null;
+          renderQuest(plan);
+        }, 5000);
+      }
+    } else {
+      statusEl.className = 'pointing-status';
+      if (d < 30) {
+        statusEl.textContent = '● WARMER';
+      } else {
+        statusEl.textContent = '● COLDER';
+      }
+
+      if (messageEl) {
+        messageEl.style.display = 'none';
+      }
+
+      if (autoReturnTimeout) {
+        clearTimeout(autoReturnTimeout);
+        autoReturnTimeout = null;
+      }
+    }
+  });
 }
 
 // S5: Found Screen

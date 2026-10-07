@@ -8,7 +8,8 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
-    "check-data": "node tools/check_data.mjs"
+    "check-data": "node tools/check_data.mjs",
+    "test": "node test/pointing_test.mjs"
   },
   "dependencies": {
     "@wllama/wllama": "^3.8.1",
