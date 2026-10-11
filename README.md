@@ -1,46 +1,104 @@
-# Look Up 🔭
+# Look Up
 
-An offline night-sky field guide. Phone down, look up.
+Look Up: an offline night-sky field guide. Phone down, look up.  
+Built for the DEV Touch Grass challenge (Hacktoberfest 2026).  
+Try it: https://lookupsky.netlify.app/
 
-Live: LIVE_URL_HERE
+## What it does
+- Tells you what is worth seeing tonight from where you stand, with direction, height, and best time.
+- Offers puzzle-style quests for night-sky targets, with hints revealed on request.
+- Provides Point & check guidance using compass and tilt sensors without using the camera.
+- Includes a small open-weight AI guide that runs locally in your browser, completely offline.
+- Works offline as an installable progressive web app (PWA).
 
-Look Up tells you what's worth seeing tonight from where you stand, sends you outside to find it, and gives fewer hints the better you get, until you don't need the phone at all. A small open-weight language model runs on your device as the guide, so it keeps working under dark skies with no signal.
+## Why open-source and open-weight
+- Works with no signal under dark skies away from cell towers.
+- Location data stays on your device and is never sent to a server.
+- Runs without API keys, accounts, or ongoing running costs.
+- The model is swappable with any small GGUF model supported by wllama.
 
-Built for the DEV "Touch Grass" challenge (Hacktoberfest 2026).
+## How the AI is kept honest
+The sky engine computes positions from catalogue data and decides what is true. The language model only rephrases facts built by code and never calculates coordinates or times. Every AI answer is checked against the sky data and rejected if it contains unknown names or numbers. Quick code answers show first.
 
-## Features
-- **Tonight's plan:** beginner targets that are up tonight, with direction, height and best time.
-- **Quests:** a puzzle first ("three bright stars in a big triangle"), hints only if you ask.
-- **Point & check:** compass + tilt guide you to the target with warmer/colder feedback.
-- **Local AI guide:** Qwen2.5-0.5B via wllama, fully in the browser, answers only from computed sky facts.
-- **Installable + offline:** PWA with red-on-black night mode to protect dark adaptation.
+## Not built
+The following features are not built:
+- Camera star recognition
+- AR sky map
+- Accounts
+- Cloud sync
+- Weather
+- Sky darkness check
 
-## How to run
-Needs Node.js 20.19+ or 22.12+ (check with `node -v`).
+Levels 2 and 3 are partly implemented.
 
+## Tech stack
+
+| Component | Technology | Version / Details |
+|---|---|---|
+| Build tool | Vite | `^8.3.3` |
+| PWA support | vite-plugin-pwa | `^2.0.0` |
+| Development SSL | @vitejs/plugin-basic-ssl | `^2.3.0` |
+| Language | Plain JavaScript | ES modules (no framework, no TypeScript) |
+| Astronomy calculations | astronomy-engine | `^2.1.19` |
+| On-device LLM runtime | @wllama/wllama | `^3.8.1` |
+| Language model | Qwen2.5-0.5B-Instruct GGUF | Q4_K_M quantization (~463 MiB) |
+| Star catalogue | HYG Database v4.1 | 1,637 stars (magnitude <= 5.0) |
+| Constellation lines | d3-celestial | 89 constellation outlines |
+
+## Requirements
+- Node.js: tested with v24.21.0
+- npm: tested with 11.19.0
+- Browser: Google Chrome (desktop or Android)
+- Storage: about 500 MB free storage for the model download
+- HTTPS: required for phone sensors and geolocation
+
+## Setup
 ```bash
+git clone https://github.com/meawdak/Look-Up.git
+cd Look-Up
 npm install
 npm run dev
 ```
-- Laptop: open `https://localhost:5173` and accept the certificate warning (it is a local development certificate).
-- Phone on the same Wi-Fi: open the `Network:` address printed in the terminal.
 
-Other commands:
-```bash
-npm test            # runs pointing maths & guide tests
-npm run check-data  # verifies the datasets
-npm run build       # production build in dist/
-npm run preview     # serve the production build locally
+Open the HTTPS URL that Vite prints in your terminal. On a phone on the same Wi-Fi, use the laptop's network address printed by Vite. Accept the self-signed certificate warning.
+
+## Commands
+- `npm run dev`: Starts the Vite development server with HTTPS and host access.
+- `npm test`: Runs unit tests for pointing maths and guide verification.
+- `npm run check-data`: Verifies the star, constellation, and target JSON datasets.
+- `npm run build`: Bundles the application and generates PWA precache assets in `dist/`.
+- `npm run preview`: Serves the production build locally with HTTPS.
+
+## Using it offline
+Open the live site while online. Ask one question so the model downloads (~470 MB, stored in the browser Origin Private File System). Install the app to your home screen or desktop. It then works in airplane mode with no internet connection.
+
+## Deploying
+Build the project with `npm run build` and deploy the `dist/` directory to Netlify.
+
+The file `public/_headers` sets `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` so the model can use multiple threads via WebAssembly and `SharedArrayBuffer`. GitHub Pages cannot set these headers.
+
+## Project structure
+```text
+look-up/
+├── src/            # Application source code
+│   ├── ai/         # Model loader and prompt builder for the local AI guide
+│   ├── game/       # Progress tracking, level state, and localStorage persistence
+│   ├── sensors/    # Device orientation math and vector smoothing
+│   └── sky/        # Astronomy calculations and tonight's target planner
+├── public/data/    # Verified JSON datasets (stars, constellations, targets)
+├── test/           # Test suites for pointing math and guide verification
+├── tools/          # Dataset processing and validation scripts
+└── docs/           # Documentation (PRD, architecture, UI/UX specs, data sources)
 ```
 
-## How it works
-The sky engine (`astronomy-engine` + star catalogue) computes positions and facts. The language model only rephrases facts and is strictly validated against sky data. See [`docs/TECH.md`](docs/TECH.md).
+## Credits and licences
+- **Model:** Qwen2.5-0.5B-Instruct-GGUF by Alibaba Cloud, licensed under Apache-2.0.
+- **Star data:** HYG Database v4.1 by astronexus, licensed under CC BY-SA 4.0. The derived star data in `public/data/stars.json` stays CC BY-SA 4.0.
+- **Constellation lines:** d3-celestial constellation outlines © 2015 Olaf Frohn, licensed under BSD-3-Clause.
+- **astronomy-engine:** astronomy-engine © Don Cross, licensed under MIT.
+- **@wllama/wllama:** wllama © NgxSon, licensed under MIT.
 
-## Licences & Third-Party Notices
-- **Star data:** [HYG Database](https://codeberg.org/astronexus/hyg) by astronexus, licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
-- **Constellation lines:** [d3-celestial](https://github.com/ofrohn/d3-celestial) © 2015 Olaf Frohn, licensed under [BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause)
-- **Model:** [Qwen2.5-0.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF) by Alibaba Cloud, licensed under [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0)
-- **Dependencies:** [astronomy-engine](https://github.com/cosinekitty/astronomy) (MIT), [@wllama/wllama](https://github.com/ngxson/wllama) (MIT)
-- **Application Code:** [MIT License](LICENSE)
+For full licence texts, see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-For full licence texts, see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and [`LICENSE`](LICENSE).
+## Licence
+Application code is licensed under the MIT Licence. See [`LICENSE`](LICENSE).
