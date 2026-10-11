@@ -22,7 +22,6 @@ export default defineConfig({
     basicSsl(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icons/*.png'],
       workbox: {
         // app shell + star data are cached for offline use.
         // The AI model is NOT precached (too big); src/ai/modelStore.js caches it on request.

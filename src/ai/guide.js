@@ -386,7 +386,7 @@ export function quickAnswer(facts, question = '') {
   }
   if (category === 'what') {
     if (facts.puzzle) {
-      return `${facts.target}: "${facts.puzzle}"`;
+      return `${facts.target}: ${facts.puzzle}`;
     }
     return `${facts.target} is visible in the sky. Look up to spot it.`;
   }

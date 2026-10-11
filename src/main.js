@@ -503,7 +503,7 @@ async function renderAskGuide(plan) {
       </form>
 
       <div id="guide-response" class="guide-box" aria-live="polite">
-        <p class="guide-answer">Guide: "${defaultAnswer}"</p>
+        <p class="guide-answer">${defaultAnswer}</p>
         <p class="guide-meta">${downloaded ? '' : 'Template answer (download guide for custom answers)'}</p>
       </div>
 
@@ -593,7 +593,33 @@ async function renderAskGuide(plan) {
     }
   }
 
-  async function handleQuestion(q) {
+  function handleChip(q) {
+    const question = q.trim();
+    if (!question) return;
+
+    // Chips use quickAnswer only and must NOT call the model.
+    stopAiTimer();
+    currentRequestId++;
+    if (activeAbortController) {
+      try { activeAbortController.abort(); } catch {}
+      activeAbortController = null;
+    }
+    setBusy(false);
+
+    const responseEl = $('guide-response');
+    if (!responseEl) return;
+
+    const qFacts = buildFactsFor(plan, appData, question);
+    const answer = quickAnswer(qFacts, question);
+
+    responseEl.innerHTML = `
+      <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Quick answer</p>
+      <p class="guide-answer">${answer}</p>
+      <div id="ai-status-container"></div>
+    `;
+  }
+
+  async function handleTypedQuestion(q) {
     const question = q.trim();
     if (!question) return;
 
@@ -603,11 +629,11 @@ async function renderAskGuide(plan) {
     // Build question-specific facts without raw magnitude numbers or hints array
     const qFacts = buildFactsFor(plan, appData, question);
 
-    // 1. Immediately display the quick answer
+    // 1. Immediately display the quick answer (plain sentence only, no "Guide:" prefix, no quotes)
     const immediateAnswer = quickAnswer(qFacts, question);
     responseEl.innerHTML = `
       <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Quick answer</p>
-      <p id="guide-display-text" class="guide-answer">Guide: "${immediateAnswer}"</p>
+      <p id="guide-display-text" class="guide-answer">${immediateAnswer}</p>
       <div id="ai-status-container"></div>
     `;
 
@@ -643,7 +669,7 @@ async function renderAskGuide(plan) {
     if (statusContainer) {
       statusContainer.innerHTML = `
         <div class="ai-status-row">
-          <span class="ai-status-text">${statusMessage} · <span id="ai-timer">0</span>s</span>
+          <span id="ai-status-text" class="ai-status-text">${statusMessage} · <span id="ai-timer">0</span>s</span>
           <button id="btn-skip-ai" class="btn-skip" type="button">Skip AI</button>
         </div>
       `;
@@ -672,15 +698,14 @@ async function renderAskGuide(plan) {
       };
     }
 
+    // Streaming: do NOT display streamed words. Show only "Guide is writing… (N words)".
     const onToken = (streamedText) => {
       if (reqId !== currentRequestId) return;
-      const answerTextEl = $('guide-display-text');
-      if (answerTextEl) {
-        if (streamedText.includes('NOT_IN_FACTS')) {
-          answerTextEl.textContent = `Guide: "That's not in my sky data. I can tell you where it is, how far away it is, or how to find it."`;
-        } else {
-          answerTextEl.textContent = `Guide: "${streamedText}"`;
-        }
+      const trimmed = streamedText.trim();
+      const words = trimmed ? trimmed.split(/\s+/).length : 0;
+      const statusTextEl = $('ai-status-text');
+      if (statusTextEl) {
+        statusTextEl.textContent = `Guide is writing… (${words} words)`;
       }
     };
 
@@ -707,7 +732,7 @@ async function renderAskGuide(plan) {
         "That's not in my sky data. I can tell you where it is, how far away it is, or how to find it.";
       const finalAnswer = answer.includes('NOT_IN_FACTS') ? NOT_IN_FACTS_MESSAGE : answer;
 
-      // 4. If AI answer arrives and passes checkAnswer(), replace the quick answer
+      // 4. When done, run checkAnswer on final text and only then show under "Guide answer"
       if (checkAnswer(answer, qFacts)) {
         const timingLine = loadSeconds
           ? `Model load: ${loadSeconds} s · Prompt: ${promptTokens} tokens · Answer: ${seconds} s`
@@ -715,13 +740,13 @@ async function renderAskGuide(plan) {
 
         responseEl.innerHTML = `
           <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Guide answer (checked against sky data)</p>
-          <p class="guide-answer">Guide: "${finalAnswer}"</p>
+          <p class="guide-answer">${finalAnswer}</p>
           <p class="guide-meta">${timingLine}</p>
         `;
       } else {
         responseEl.innerHTML = `
           <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Quick answer</p>
-          <p class="guide-answer">Guide: "${immediateAnswer}"</p>
+          <p class="guide-answer">${immediateAnswer}</p>
           <p class="guide-meta">AI answer did not match sky data. Kept quick answer.</p>
         `;
       }
@@ -736,7 +761,7 @@ async function renderAskGuide(plan) {
       console.warn('AI guide error, keeping quick answer:', err);
       responseEl.innerHTML = `
         <p class="guide-meta" style="color: var(--muted); font-weight: 600; margin-bottom: 4px;">Quick answer</p>
-        <p class="guide-answer">Guide: "${immediateAnswer}"</p>
+        <p class="guide-answer">${immediateAnswer}</p>
         <p class="guide-meta">Guide unavailable: ${err.message || 'error'}. Kept quick answer.</p>
       `;
     }
@@ -745,7 +770,7 @@ async function renderAskGuide(plan) {
   app.querySelectorAll('.chip').forEach((chip) => {
     chip.onclick = () => {
       const q = chip.getAttribute('data-q');
-      handleQuestion(q);
+      handleChip(q);
     };
   });
 
@@ -755,8 +780,9 @@ async function renderAskGuide(plan) {
       e.preventDefault();
       const input = $('ask-input');
       if (input && input.value) {
-        handleQuestion(input.value);
+        const val = input.value;
         input.value = '';
+        handleTypedQuestion(val);
       }
     };
   }
